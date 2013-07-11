@@ -131,6 +131,7 @@
 #include <linux/random.h>
 #include <trace/events/napi.h>
 #include <linux/pci.h>
+#include <linux/iface_stat.h>
 
 #include "net-sysfs.h"
 
@@ -1731,7 +1732,7 @@ int skb_checksum_help(struct sk_buff *skb)
 		goto out_set_summed;
 	}
 
-	offset = skb->csum_start - skb_headroom(skb);
+	offset = skb_checksum_start_offset(skb);
 	BUG_ON(offset >= skb_headlen(skb));
 	csum = skb_checksum(skb, offset, skb->len - offset, 0);
 
@@ -1914,14 +1915,14 @@ static int dev_gso_segment(struct sk_buff *skb)
 
 /*
  * Try to orphan skb early, right before transmission by the device.
- * We cannot orphan skb if tx timestamp is requested, since
- * drivers need to call skb_tstamp_tx() to send the timestamp.
+ * We cannot orphan skb if tx timestamp is requested or the sk-reference
+ * is needed on driver level for other reasons, e.g. see net/can/raw.c
  */
 static inline void skb_orphan_try(struct sk_buff *skb)
 {
 	struct sock *sk = skb->sk;
 
-	if (sk && !skb_tx(skb)->flags) {
+	if (sk && !skb_shinfo(skb)->tx_flags) {
 		/* skb_tx_hash() wont be able to get sk.
 		 * We copy sk_hash into skb->rxhash
 		 */
@@ -4825,6 +4826,9 @@ static void rollback_registered_many(struct list_head *head)
 	synchronize_net();
 
 	list_for_each_entry(dev, head, unreg_list) {
+		/* Store stats for this device in persistent iface_stat */
+		iface_stat_update(dev);
+
 		/* Shutdown queueing discipline. */
 		dev_shutdown(dev);
 
@@ -4926,6 +4930,75 @@ unsigned long netdev_fix_features(unsigned long features, const char *name)
 	return features;
 }
 EXPORT_SYMBOL(netdev_fix_features);
+
+int __netdev_update_features(struct net_device *dev)
+{
+	u32 features;
+	int err = 0;
+
+	ASSERT_RTNL();
+
+	features = netdev_get_wanted_features(dev);
+
+	if (dev->netdev_ops->ndo_fix_features)
+		features = dev->netdev_ops->ndo_fix_features(dev, features);
+
+	/* driver might be less strict about feature dependencies */
+	features = netdev_fix_features(dev, features);
+
+	if (dev->features == features)
+		return 0;
+
+	netdev_dbg(dev, "Features changed: 0x%08x -> 0x%08x\n",
+		dev->features, features);
+
+	if (dev->netdev_ops->ndo_set_features)
+		err = dev->netdev_ops->ndo_set_features(dev, features);
+
+	if (unlikely(err < 0)) {
+		netdev_err(dev,
+			"set_features() failed (%d); wanted 0x%08x, left 0x%08x\n",
+			err, features, dev->features);
+		return -1;
+	}
+
+	if (!err)
+		dev->features = features;
+
+	return 1;
+}
+
+/**
+ *	netdev_update_features - recalculate device features
+ *	@dev: the device to check
+ *
+ *	Recalculate dev->features set and send notifications if it
+ *	has changed. Should be called after driver or hardware dependent
+ *	conditions might have changed that influence the features.
+ */
+void netdev_update_features(struct net_device *dev)
+{
+	if (__netdev_update_features(dev))
+		netdev_features_change(dev);
+}
+EXPORT_SYMBOL(netdev_update_features);
+
+/**
+ *	netdev_change_features - recalculate device features
+ *	@dev: the device to check
+ *
+ *	Recalculate dev->features set and send notifications even
+ *	if they have not changed. Should be called instead of
+ *	netdev_update_features() if also dev->vlan_features might
+ *	have changed to allow the changes to be propagated to stacked
+ *	VLAN devices.
+ */
+void netdev_change_features(struct net_device *dev)
+{
+	__netdev_update_features(dev);
+	netdev_features_change(dev);
+}
+EXPORT_SYMBOL(netdev_change_features);
 
 /**
  *	netif_stacked_transfer_operstate -	transfer operstate

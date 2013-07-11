@@ -90,7 +90,7 @@ static struct sctp_af *sctp_af_v6_specific;
 struct kmem_cache *sctp_chunk_cachep __read_mostly;
 struct kmem_cache *sctp_bucket_cachep __read_mostly;
 
-int sysctl_sctp_mem[3];
+long sysctl_sctp_mem[3];
 int sysctl_sctp_rmem[3];
 int sysctl_sctp_wmem[3];
 
@@ -1002,7 +1002,8 @@ int sctp_register_pf(struct sctp_pf *pf, sa_family_t family)
 static inline int init_sctp_mibs(void)
 {
 	return snmp_mib_init((void __percpu **)sctp_statistics,
-			     sizeof(struct sctp_mib));
+			     sizeof(struct sctp_mib),
+			     __alignof__(struct sctp_mib));
 }
 
 static inline void cleanup_sctp_mibs(void)
