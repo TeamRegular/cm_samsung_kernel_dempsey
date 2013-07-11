@@ -109,12 +109,12 @@ static void sctp_sock_migrate(struct sock *, struct sock *,
 static char *sctp_hmac_alg = SCTP_COOKIE_HMAC_ALG;
 
 extern struct kmem_cache *sctp_bucket_cachep;
-extern int sysctl_sctp_mem[3];
+extern long sysctl_sctp_mem[3];
 extern int sysctl_sctp_rmem[3];
 extern int sysctl_sctp_wmem[3];
 
 static int sctp_memory_pressure;
-static atomic_t sctp_memory_allocated;
+static atomic_long_t sctp_memory_allocated;
 struct percpu_counter sctp_sockets_allocated;
 
 static void sctp_enter_memory_pressure(struct sock *sk)
@@ -3737,6 +3737,12 @@ SCTP_STATIC void sctp_destroy_sock(struct sock *sk)
 
 	/* Release our hold on the endpoint. */
 	ep = sctp_sk(sk)->ep;
+	/* This could happen during socket init, thus we bail out
+	 * early, since the rest of the below is not setup either.
+	 */
+	if (ep == NULL)
+		return;
+
 	sctp_endpoint_free(ep);
 	local_bh_disable();
 	percpu_counter_dec(&sctp_sockets_allocated);

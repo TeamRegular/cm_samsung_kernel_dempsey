@@ -281,12 +281,7 @@ static int raw_init(struct sock *sk)
 static int raw_release(struct socket *sock)
 {
 	struct sock *sk = sock->sk;
-	struct raw_sock *ro;
-
-	if (!sk)
-		return 0;
-
-	ro = raw_sk(sk);
+	struct raw_sock *ro = raw_sk(sk);
 
 	unregister_netdevice_notifier(&ro->notifier);
 
@@ -657,12 +652,12 @@ static int raw_sendmsg(struct kiocb *iocb, struct socket *sock,
 	err = memcpy_fromiovec(skb_put(skb, size), msg->msg_iov, size);
 	if (err < 0)
 		goto free_skb;
-	err = sock_tx_timestamp(msg, sk, skb_tx(skb));
+	err = sock_tx_timestamp(sk, &skb_shinfo(skb)->tx_flags);
 	if (err < 0)
 		goto free_skb;
 
 	/* to be able to check the received tx sock reference in raw_rcv() */
-	skb_tx(skb)->prevent_sk_orphan = 1;
+	skb_shinfo(skb)->tx_flags |= SKBTX_DRV_NEEDS_SK_REF;
 
 	skb->dev = dev;
 	skb->sk  = sk;

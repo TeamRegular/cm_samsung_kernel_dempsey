@@ -63,8 +63,8 @@ EXPORT_SYMBOL_GPL(nf_conntrack_htable_size);
 unsigned int nf_conntrack_max __read_mostly;
 EXPORT_SYMBOL_GPL(nf_conntrack_max);
 
-DEFINE_PER_CPU(struct nf_conn, nf_conntrack_untracked);
-EXPORT_PER_CPU_SYMBOL(nf_conntrack_untracked);
+struct nf_conn nf_conntrack_untracked;
+EXPORT_SYMBOL_GPL(nf_conntrack_untracked);
 
 unsigned int nf_conntrack_hash_rnd __read_mostly;
 
@@ -1351,8 +1351,7 @@ void *nf_ct_alloc_hashtable(unsigned int *sizep, int nulls)
 					get_order(sz));
 	if (!hash) {
 		printk(KERN_WARNING "nf_conntrack: falling back to vmalloc.\n");
-		hash = __vmalloc(sz, GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO,
-				 PAGE_KERNEL);
+		hash = __vmalloc(sz, GFP_KERNEL | __GFP_ZERO, PAGE_KERNEL);
 	}
 
 	if (hash && nulls)
