@@ -42,12 +42,17 @@
 #endif
 #include "s3cfb.h"
 
+#ifdef CONFIG_FB_S3C_SPLASH_SCREEN
+#ifdef CONFIG_MACH_ARIES
 #include "logo_rgb24_wvga_portrait.h"
+#include <mach/regs-clock.h>
+#define BOOT_FB_WINDOW  0
+#endif
+#endif
 
 #ifdef CONFIG_FB_S3C_MDNIE
 #include "s3cfb_mdnie.h"
 #include <linux/delay.h>
-#include <mach/regs-clock.h>
 #endif
 
 #if (CONFIG_FB_S3C_NUM_OVLY_WIN >= CONFIG_FB_S3C_DEFAULT_WINDOW)
@@ -167,6 +172,12 @@ MODULE_PARM_DESC(bootloaderfb, "Address of booting logo image in Bootloader");
 static int s3cfb_draw_logo(struct fb_info *fb)
 {
 #ifdef CONFIG_FB_S3C_SPLASH_SCREEN
+#ifdef CONFIG_MACH_ARIES
+    if (readl(S5P_INFORM5)) //LPM_CHARGING mode
+        memcpy(fb->screen_base, charging, fb->var.yres * fb->fix.line_length);
+    else
+        memcpy(fb->screen_base, LOGO_RGB24, fb->var.yres * fb->fix.line_length);
+#else
 	struct fb_fix_screeninfo *fix = &fb->fix;
 	struct fb_var_screeninfo *var = &fb->var;
 
@@ -204,7 +215,8 @@ static int s3cfb_draw_logo(struct fb_info *fb)
 		}
 	}
 #endif
-/*
+#endif /* CONFIG_MACH_ARIES */
+#ifndef CONFIG_MACH_ARIES
 	if (bootloaderfb) {
 		u8 *logo_virt_buf;
 		logo_virt_buf = ioremap_nocache(bootloaderfb,
@@ -214,11 +226,7 @@ static int s3cfb_draw_logo(struct fb_info *fb)
 				fb->var.yres * fb->fix.line_length);
 		iounmap(logo_virt_buf);
 	}
-*/
-	if (readl(S5P_INFORM5)) //LPM_CHARGING mode
-		memcpy(fb->screen_base, charging, fb->var.yres * fb->fix.line_length);
-	else
-		memcpy(fb->screen_base, LOGO_RGB24, fb->var.yres * fb->fix.line_length);
+#endif
 	return 0;
 }
 #endif
@@ -1280,6 +1288,14 @@ static int __devinit s3cfb_probe(struct platform_device *pdev)
 
 
 	s3cfb_set_clock(fbdev);
+
+#ifdef CONFIG_MACH_ARIES
+  if (pdata->default_win != BOOT_FB_WINDOW)  {
+    dev_warn(fbdev->dev, "closing bootloader FIMD window 0\n", BOOT_FB_WINDOW);
+    s3cfb_set_window(fbdev, BOOT_FB_WINDOW, 0);
+  }
+#endif
+
 #ifdef CONFIG_FB_S3C_MDNIE
 	mDNIe_Mode_Set();
 #endif 
